@@ -1,8 +1,9 @@
 from tkinter import *
 from tkinter import messagebox
 import time, socket, threading
-import tkinter
+import tkinter 
 
+#SERVER_ADDRESS = ("192.168.0.172", 11000)
 SERVER_ADDRESS = ("127.0.0.1", 11000)
 CLIENT_NAME = ""
 
@@ -10,11 +11,14 @@ stopRequest1 = False
 stopWaitingTimer = False
 timeIsOver = False
 
+waitIsOver = False
+
 label2 = None
 scrollbar = None
 listbox = None
 button2 = None
 buttons = None
+label8 = None
 
 free_clients1 = []
 free_clients2 = []
@@ -43,6 +47,7 @@ response5 = '838c118150d2f7b40272b6aee2492357b77dfc870209ca9df9cae280e0d5076c' #
 response6 = '144a5931ec80d672f104cc4c7e6b978b825ac06df0d7c5774ab7994a35ebcb50' #Код ответа о выигрыше или проигрыше
 
 winCode = '0713d07cd82977b5de4dba918140019fbfecf9883b13ea58f7f2c54f121bb06a' #Код победы
+winCodeEr = '75cae1fbdffebfacd69763f3d58665783212167fdf2893e37180d4c3a1675750' #Код победы в случае отключения игрока
 loseCode = 'cc8a30ea6faccd1bd3503e5a9001bbac91871be28a2140be347b2cc9d27d8031' #Код порожения
 drawCode = '50f7becde477bb509c7704de62c349247fb3499c03a95e4bce20151cd552dea5' #Код ничьей
 
@@ -51,6 +56,9 @@ root.title("Tic-tac-toe")
 root.geometry('450x500')
 root.resizable(width=False, height=False)
 root.configure(bg="grey")
+
+def match(text, alphabet=set('абвгдеёжзийклмнопрстуфхцчшщъыьэюя')):
+    return not alphabet.isdisjoint(text.lower())
 
 def getClientsList(client_socket):
     global stopRequest1
@@ -61,19 +69,27 @@ def getClientsList(client_socket):
 #Обработчик нажатия на кнопку button1
 def joinClick():
     global CLIENT_NAME
+    def timer(sec):
+        global waitIsOver
+        waitIsOver = False
+        for s in range(sec):
+            time.sleep(1)
+        waitIsOver = True
+
     def push(number):
-        global buttons, left_buttons, PLAYER_SIGN
+        global buttons, left_buttons, PLAYER_SIGN, label8
         buttons[number].config(text=PLAYER_SIGN, state="disabled", bg="white")
         left_buttons.remove(number)
 
         client_socket.send(str(number).encode("utf-8"))
+        label8['text'] = f"Sign: {PLAYER_SIGN}  Turn: opponent" 
 
         for button in buttons:
             button.config(state='disabled')
 
     #Функция отрисовки поля игры
     def drawPlayingField():
-        global buttons
+        global buttons, label8
         time.sleep(0.25)
 
         label2.destroy()
@@ -81,7 +97,7 @@ def joinClick():
         listbox.destroy()
         button2.destroy()
 
-        root.geometry('442x500')
+        root.geometry('425x540')
         
         buttons = [Button(width=6, height=3, font=('Arial', 28, 'bold'), bg='gray', command=lambda x=i: push(x)) for i in range(9)]
 
@@ -94,6 +110,9 @@ def joinClick():
             if col == 3: 
                 row += 1
                 col = 0
+
+        label8 = Label(text=f"",fg="white", bg="grey", font=('Arial', 20, 'bold'))
+        label8.place(x=10, y=500)
 
     def countdown(num_of_secs):
         global stopWaitingTimer, timeIsOver, label2, scrollbar, listbox, button2, free_clients1, free_clients2, result
@@ -134,7 +153,7 @@ def joinClick():
 
     #Функция в дополнительном потоке производит динамическое обновление списка игроков
     def serverListener(client_socket):
-        global stopRequest1, timeIsOver, stopWaitingTimer, listbox, label2, scrollbar, button2, free_clients1, free_clients2, result, PLAYER_SIGN, TURN, left_buttons
+        global stopRequest1, timeIsOver, stopWaitingTimer, listbox, label2, scrollbar, button2, free_clients1, free_clients2, result, PLAYER_SIGN, TURN, left_buttons, label8, waitIsOver
         while True:
             response = client_socket.recv(1024).decode("utf-8")
 
@@ -162,19 +181,30 @@ def joinClick():
                 free_clients2 = free_clients1
             if response == response2:
                 opponentName = client_socket.recv(1024).decode("utf-8")
+
+                newTimer = threading.Thread(target=timer, args=(25, ))
+                newTimer.start()
+
                 question = messagebox.askquestion("invitation", f"The player {opponentName} invites you to play..\nDo you want to play?")
                 #Если согласны, отправляем подтверждение
                 if question == 'yes':
-                    client_socket.send(request3.encode("utf-8"))
-                    client_socket.send(acknowledge_code.encode("utf-8"))
-                    client_socket.send(opponentName.encode("utf-8"))
-                    stopRequest1 = not stopRequest1
-                    drawPlayingField()
+                    if waitIsOver:
+                        messagebox.showinfo("Information", "Waiting time is over!")
+                    else:
+                        client_socket.send(request3.encode("utf-8"))
+                        client_socket.send(acknowledge_code.encode("utf-8"))
+                        client_socket.send(opponentName.encode("utf-8"))
+                        stopRequest1 = not stopRequest1
+                        drawPlayingField()
                 #Если не согласны, отправляем ошибку
                 if question == 'no':
-                    client_socket.send(request3.encode("utf-8"))
-                    client_socket.send(error_code.encode("utf-8"))
-                    client_socket.send(opponentName.encode("utf-8"))
+                    if waitIsOver:
+                        messagebox.showinfo("Information", "Waiting time is over!")
+                    else:
+                        client_socket.send(request3.encode("utf-8"))
+                        client_socket.send(error_code.encode("utf-8"))
+                        client_socket.send(opponentName.encode("utf-8"))
+
             if response == response3:
                 code = client_socket.recv(64).decode("utf-8")
                 if code == error_code:
@@ -211,9 +241,9 @@ def joinClick():
                 left_buttons = list(range(9))
 
                 if bool(TURN) == True:
-                    messagebox.showinfo("Welcome to the game!", f"You is {PLAYER_SIGN}!\nYour turn!")
+                    label8['text'] = f"Sign: {PLAYER_SIGN}  Turn: your" 
                 if bool(TURN) == False:
-                    messagebox.showinfo("Welcome to the game!", f"You is {PLAYER_SIGN}!\nOpponent turn!")
+                    label8['text'] = f"Sign: {PLAYER_SIGN}  Turn: opponent" 
                     for button in buttons:
                         button.config(state='disabled')
             if response == response5:
@@ -227,6 +257,7 @@ def joinClick():
                 for button in buttons:
                     if buttons.index(button) in left_buttons:
                         button.config(state='normal')
+                label8['text'] = f"Sign: {PLAYER_SIGN}  Turn: your" 
             if response == response6:
                 code = client_socket.recv(1024).decode("utf-8")
                 
@@ -239,14 +270,28 @@ def joinClick():
 
                 root.geometry('450x500')
 
-                drawPlayerSelector()
-
                 if code == winCode:
-                    messagebox.showinfo("Win", "You Win!")
+                    label7 = Label(fg="white", bg="grey", font=('Arial', 20, 'bold'), text="You win!!!")
+                    label7.place(x=170, y=250) 
+                    time.sleep(5)
+                    label7.destroy()
                 if code == loseCode:
-                    messagebox.showinfo("Lose", "You Lose!")
+                    label7 = Label(fg="white", bg="grey", font=('Arial', 20, 'bold'), text="You lose!!!")
+                    label7.place(x=165, y=250) 
+                    time.sleep(5)
+                    label7.destroy()
                 if code == drawCode:
-                    messagebox.showinfo("Draw", "It's draw!")
+                    label7 = Label(fg="white", bg="grey", font=('Arial', 20, 'bold'), text="It's draw!!!")
+                    label7.place(x=165, y=250) 
+                    time.sleep(5)
+                    label7.destroy()
+                if code == winCodeEr:
+                    label7 = Label(fg="white", bg="grey", font=('Arial', 20, 'bold'), text="The opponent has disconnected!")
+                    label7.place(x=10, y=250) 
+                    time.sleep(5)
+                    label7.destroy()
+
+                drawPlayerSelector()
                 
     def startGame(client_socket):
         global stopRequest1, stopWaitingTimer, timeIsOver, scrollbar, listbox, button2, label2
@@ -271,6 +316,8 @@ def joinClick():
     def drawPlayerSelector():
         global stopRequest1, scrollbar, listbox, button2, label2
 
+        if label8 is not None:
+            label8.destroy()
         label1.destroy()
         entry1.destroy()
         button1.destroy()
@@ -298,24 +345,27 @@ def joinClick():
     CLIENT_NAME = entry1.get()
     if not CLIENT_NAME:
         messagebox.showerror("Error!", "Please, enter your name!")
-    else: 
-        #Конектимся к серверу
-        client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        client_socket.connect(SERVER_ADDRESS)
-        client_socket.send(CLIENT_NAME.encode("utf-8"))
-        code = client_socket.recv(1024).decode("utf-8")
-        #Если пришло подтверждение перерисовываем интерфейс 
-        if code == acknowledge_code:
-            drawPlayerSelector()
+    else:
+        if match(CLIENT_NAME):
+            messagebox.showerror("Error!", "Please, enter your name in latin latters!")
+        else:
+            #Конектимся к серверу
+            client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            client_socket.connect(SERVER_ADDRESS)
+            client_socket.send(CLIENT_NAME.encode("utf-8"))
+            code = client_socket.recv(1024).decode("utf-8")
+            #Если пришло подтверждение перерисовываем интерфейс 
+            if code == acknowledge_code:
+                drawPlayerSelector()
 
-            #Запускаем поток, в котором будем принимать ответы сервера
-            newServerListener = threading.Thread(target=serverListener, args=(client_socket, ))
-            newServerListener.start()
+                #Запускаем поток, в котором будем принимать ответы сервера
+                newServerListener = threading.Thread(target=serverListener, args=(client_socket, ))
+                newServerListener.start()
 
-        #Если пришел код ошибки, оставляем интерфейс
-        if code == error_code:
-            messagebox.showerror("Error!", "Such name is already exists!")
-            client_socket.close()
+            #Если пришел код ошибки, оставляем интерфейс
+            if code == error_code:
+                messagebox.showerror("Error!", "Such name is already exists!")
+                client_socket.close()
             
 #Отрисовка интерфейса ввода имени пользователя            
 label1 = Label(text="Welcome to the tic-tac-toe game!\nPlease, enter your name!", fg="white", bg="grey", font=('Arial', 20, 'bold'))
