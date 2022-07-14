@@ -1,5 +1,6 @@
 import socket, threading, random, time
 
+#SERVER_ADDRESS = ("192.168.0.172", 11000)
 SERVER_ADDRESS = ("127.0.0.1", 11000)
 
 error_code = '54a0e8c17ebb21a11f8a25b8042786ef7efe52441e6cc87e92c67e0c4c0c6e78' #Код ошибки
@@ -19,6 +20,7 @@ response5 = '838c118150d2f7b40272b6aee2492357b77dfc870209ca9df9cae280e0d5076c' #
 response6 = '144a5931ec80d672f104cc4c7e6b978b825ac06df0d7c5774ab7994a35ebcb50' #Код ответа о выигрыше или проигрыше
 
 winCode = '0713d07cd82977b5de4dba918140019fbfecf9883b13ea58f7f2c54f121bb06a' #Код победы
+winCodeEr = '75cae1fbdffebfacd69763f3d58665783212167fdf2893e37180d4c3a1675750' #Код победы в случае отключения игрока
 loseCode = 'cc8a30ea6faccd1bd3503e5a9001bbac91871be28a2140be347b2cc9d27d8031' #Код порожения
 drawCode = '50f7becde477bb509c7704de62c349247fb3499c03a95e4bce20151cd552dea5' #Код ничьей
 
@@ -101,18 +103,51 @@ def gameHandler(index1, index2):
             index2Turn = True
         if numTurn1 == 1:
             index1Turn = True
-        
+    
     while not gameOver:
         #Если ход за первым игроком()
         if index1Turn == True:
-            buttonCode = clients[index1][2].recv(1024).decode("utf-8")
+            try:
+                buttonCode = clients[index1][2].recv(1024).decode("utf-8")
+            except:
+                clients[index2][2].send(response6.encode("utf-8"))
+                clients[index2][2].send(winCodeEr.encode("utf-8"))
+
+                gameOver = True
+                time.sleep(0.25)
+                newClientHandler = threading.Thread(target=clientHandler, args=(clients[index2][2], clients[index2][0], ))
+                newClientHandler.start()
+
+                clients[index2][1] = False
+
+                print(f"Client from IP: {clients[index1][2].getsockname()[0]}, PORT: {clients[index1][2].getsockname()[1]} disconnected..")
+                clients.pop(index1)
+
+                continue
 
             if buttonCode == request1:
                 continue
 
             game_map[int(buttonCode)] = 0
             
-            clients[index2][2].send(response5.encode("utf-8"))
+            try:
+                clients[index2][2].send(response5.encode("utf-8"))
+            except:
+                clients[index1][2].send(response6.encode("utf-8"))
+                clients[index1][2].send(winCodeEr.encode("utf-8"))
+
+                gameOver = True
+                time.sleep(0.25)
+                newClientHandler = threading.Thread(target=clientHandler, args=(clients[index1][2], clients[index1][0], ))
+                newClientHandler.start()
+
+                clients[index1][1] = False
+
+                print(f"Client from IP: {clients[index2][2].getsockname()[0]}, PORT: {clients[index2][2].getsockname()[1]} disconnected..")
+                clients.pop(index2)
+
+                continue
+
             clients[index2][2].send(buttonCode.encode("utf-8"))
 
             isOver = checkTurn(game_map, 0)
@@ -159,14 +194,47 @@ def gameHandler(index1, index2):
             continue
 
         if index2Turn == True:
-            buttonCode = clients[index2][2].recv(1024).decode("utf-8")
+            try:
+                buttonCode = clients[index2][2].recv(1024).decode("utf-8")
+            except:
+                clients[index1][2].send(response6.encode("utf-8"))
+                clients[index1][2].send(winCodeEr.encode("utf-8"))
+
+                gameOver = True
+                time.sleep(0.25)
+                newClientHandler = threading.Thread(target=clientHandler, args=(clients[index1][2], clients[index1][0], ))
+                newClientHandler.start()
+
+                clients[index1][1] = False
+
+                print(f"Client from IP: {clients[index2][2].getsockname()[0]}, PORT: {clients[index2][2].getsockname()[1]} disconnected..")
+                clients.pop(index2)
+
+                continue
 
             if buttonCode == request1:
                 continue
 
             game_map[int(buttonCode)] = 1
             
-            clients[index1][2].send(response5.encode("utf-8"))
+            try:
+                clients[index1][2].send(response5.encode("utf-8"))
+            except:
+                clients[index2][2].send(response6.encode("utf-8"))
+                clients[index2][2].send(winCodeEr.encode("utf-8"))
+
+                gameOver = True
+                time.sleep(0.25)
+                newClientHandler = threading.Thread(target=clientHandler, args=(clients[index2][2], clients[index2][0], ))
+                newClientHandler.start()
+
+                clients[index2][1] = False
+
+                print(f"Client from IP: {clients[index1][2].getsockname()[0]}, PORT: {clients[index1][2].getsockname()[1]} disconnected..")
+                clients.pop(index1)
+
+                continue
+        
             clients[index1][2].send(buttonCode.encode("utf-8"))
 
             isOver = checkTurn(game_map, 1)
